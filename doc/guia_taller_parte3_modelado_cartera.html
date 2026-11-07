@@ -120,7 +120,7 @@
   <h2>2. Cálculo Automático en <code>__post_init__</code> y Módulo Compartido <code>metrics.py</code></h2>
   <p>Al instanciar <code>Portfolio</code>, se validan los invariantes de cada serie, se alinean los calendarios y se calculan de forma vectorizada los estadísticos fundamentales. Las funciones puras de rentabilidad y riesgo se centralizan en <code>src/toolkit/models/metrics.py</code> para ser reutilizadas sin duplicación tanto por <code>PriceSeries</code> como por <code>Portfolio</code>:</p>
   <pre><code># En Portfolio._compute_metrics() (src/toolkit/models/portfolio.py)
-self.portfolio_returns = (self.returns_df * self.weights_vector).sum(axis=1)
+self.portfolio_returns = self.returns_df @ self.weights_vector
 self.mean_return = float(self.portfolio_returns.mean())
 self.std_return = float(self.portfolio_returns.std())
 self.covariance_matrix = self.returns_df.cov()

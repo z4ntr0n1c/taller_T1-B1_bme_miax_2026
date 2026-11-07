@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from operator import attrgetter, itemgetter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -54,22 +55,34 @@ class Portfolio:
     std_return: float = field(init=False)
     covariance_matrix: pd.DataFrame = field(init=False)
     correlation_matrix: pd.DataFrame = field(init=False)
+    _asset_map: dict[str, PriceSeries] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate inputs, align asset time series, normalize weights, and compute metrics."""
         if not self.assets:
             raise ValueError("Portfolio must contain at least one PriceSeries asset.")
 
-        for asset in self.assets:
-            if not isinstance(asset, PriceSeries):
-                raise TypeError(
-                    f"All items in 'assets' must be instances of PriceSeries, got {type(asset)}."
-                )
-            validate_price_dataframe(asset.data, required_columns=("close",))
+        invalid_asset = next(
+            filter(lambda a: not isinstance(a, PriceSeries), self.assets),
+            None,
+        )
+        if invalid_asset is not None:
+            raise TypeError(
+                f"All items in 'assets' must be instances of PriceSeries, got {type(invalid_asset)}."
+            )
 
-        tickers = [asset.ticker for asset in self.assets]
+        list(
+            map(
+                lambda asset: validate_price_dataframe(asset.data, required_columns=("close",)),
+                self.assets,
+            )
+        )
+
+        tickers = list(map(attrgetter("ticker"), self.assets))
         if len(tickers) != len(set(tickers)):
             raise ValueError(f"Duplicate tickers detected in portfolio assets: {tickers}")
+
+        self._asset_map = dict(zip(tickers, self.assets, strict=False))
 
         self._align_data()
         self._process_weights()
@@ -77,8 +90,10 @@ class Portfolio:
 
     def _align_data(self) -> None:
         """Align asset returns and close prices across calendars using inner join."""
-        returns_dict = {asset.ticker: asset.data["returns"] for asset in self.assets}
-        prices_dict = {asset.ticker: asset.data["close"] for asset in self.assets}
+        tickers = self.tickers
+        data_frames = list(map(attrgetter("data"), self.assets))
+        returns_dict = dict(zip(tickers, map(itemgetter("returns"), data_frames), strict=False))
+        prices_dict = dict(zip(tickers, map(itemgetter("close"), data_frames), strict=False))
 
         self.returns_df = align_calendar_series(returns_dict, join_method="inner")
         if self.returns_df.empty:
@@ -93,15 +108,15 @@ class Portfolio:
         tickers = self.tickers
         if self.weights is None:
             equal_w = 1.0 / len(self.assets)
-            self.weights_dict = {ticker: equal_w for ticker in tickers}
+            self.weights_dict = dict.fromkeys(tickers, equal_w)
         else:
             self.weights_dict = validate_portfolio_weights(self.weights, tickers)
 
-        self.weights_vector = np.array([self.weights_dict[t] for t in tickers], dtype=float)
+        self.weights_vector = pd.Series(self.weights_dict).reindex(tickers).to_numpy(dtype=float)
 
     def _compute_metrics(self) -> None:
         """Compute daily weighted returns, covariance, correlation, and basic stats."""
-        self.portfolio_returns = (self.returns_df * self.weights_vector).sum(axis=1)
+        self.portfolio_returns = self.returns_df @ self.weights_vector
         self.portfolio_returns.name = "portfolio_returns"
 
         self.mean_return = (
@@ -121,7 +136,7 @@ class Portfolio:
     @property
     def tickers(self) -> list[str]:
         """List of asset tickers in the portfolio."""
-        return [asset.ticker for asset in self.assets]
+        return list(map(attrgetter("ticker"), self.assets))
 
     @property
     def start_date(self) -> str:
@@ -220,20 +235,23 @@ class Portfolio:
     def __getitem__(self, ticker: str) -> PriceSeries:
         """Allow dictionary-style access to constituent :class:`PriceSeries` by ticker."""
         key = ticker.strip().upper()
-        for asset in self.assets:
-            if asset.ticker == key:
-                return asset
-        raise KeyError(f"Asset with ticker '{ticker}' not found in portfolio.")
+        if key not in self._asset_map:
+            raise KeyError(f"Asset with ticker '{ticker}' not found in portfolio.")
+        return self._asset_map[key]
 
     def __str__(self) -> str:
-        weights_str = ", ".join(f"{t}: {w:.1%}" for t, w in self.weights_dict.items())
+        weights_str = ", ".join(
+            map(lambda item: f"{item[0]}: {item[1]:.1%}", self.weights_dict.items())
+        )
         return (
             f"Cartera '{self.name}' con {len(self.assets)} activos ({weights_str}) "
             f"y capital inicial {self.initial_capital:,.2f} EUR"
         )
 
     def __repr__(self) -> str:
-        weights_str = ", ".join(f"{t}: {w:.1%}" for t, w in self.weights_dict.items())
+        weights_str = ", ".join(
+            map(lambda item: f"{item[0]}: {item[1]:.1%}", self.weights_dict.items())
+        )
         return (
             f"Portfolio(name='{self.name}', assets={len(self.assets)}, "
             f"weights={{{weights_str}}}, mean={self.mean_return:.5f}, "
@@ -260,8 +278,12 @@ class Portfolio:
         cap = initial_capital if initial_capital is not None else self.initial_capital
 
         if multivariate and len(self.assets) > 1 and mu is None and sigma is None:
-            mu_vec = np.array([asset.mean_return for asset in self.assets])
-            cov_mat = self.covariance_matrix.values
+            mu_vec = np.fromiter(
+                map(attrgetter("mean_return"), self.assets),
+                dtype=float,
+                count=len(self.assets),
+            )
+            cov_mat = self.covariance_matrix.to_numpy(dtype=float)
             return MonteCarloEngine.simulate_multivariate_gbm(
                 initial_capital=cap,
                 weights=self.weights_vector,

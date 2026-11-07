@@ -248,3 +248,11 @@ flowchart TD
 5. **Simulación Estocástica Parametrizable**:
    - Admite difusión univariante analítica o difusión multivariante correlada completa basada en descomposición de Cholesky de la covarianza empírica, preservando la estructura de dependencias empíricas.
 
+6. **Vectorización Integral (Cero Bucles `for`)**:
+   - Todo el paquete `src/toolkit/` prioriza álgebra matricial y operaciones vectorizadas en NumPy y pandas sin bucles `for` ni comprensiones iterativas:
+     - Retornos de cartera mediante producto matriz-vector directo: $\mathbf{r}_p = \mathbf{R}\mathbf{w}$ (`returns_df @ weights_vector`).
+     - Parámetros agregados de cartera mediante producto escalar y forma cuadrática: $\mu_p = \mathbf{w}^\top \boldsymbol{\mu}$ y $\sigma_p = \sqrt{\mathbf{w}^\top \boldsymbol{\Sigma}\mathbf{w}}$.
+     - Extracción simultánea de cuantiles y bandas de confianza en una única pasada vectorial (`np.percentile(..., q_levels, axis=1)`).
+     - Diagnóstico de colinealidad sobre el triángulo superior estricto con `np.where(np.triu(corr_vals, k=1) > 0.75)`.
+     - Validación estructural y de pesos 100 % vectorizada (`np.isfinite`, máscaras booleanas y `pd.Index.isin`).
+

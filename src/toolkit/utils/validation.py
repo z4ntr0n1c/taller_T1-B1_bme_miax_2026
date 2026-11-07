@@ -86,24 +86,27 @@ def validate_price_dataframe(
             "Financial time series must have strictly unique observation dates."
         )
 
-    for col in required_columns:
-        if col not in df.columns:
-            raise ValidationError(
-                f"Missing required column '{col}'. Available columns: {list(df.columns)}."
-            )
+    req_index = pd.Index(required_columns)
+    missing_cols = req_index[~req_index.isin(df.columns)]
+    if not missing_cols.empty:
+        raise ValidationError(
+            f"Missing required column '{missing_cols[0]}'. Available columns: {list(df.columns)}."
+        )
 
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            raise ValidationError(
-                f"Column '{col}' must contain numeric data, but has dtype '{df[col].dtype}'."
-            )
+    numeric_mask = df[list(required_columns)].dtypes.map(pd.api.types.is_numeric_dtype)
+    if not numeric_mask.all():
+        bad_col = str(numeric_mask.index[~numeric_mask][0])
+        raise ValidationError(
+            f"Column '{bad_col}' must contain numeric data, but has dtype '{df[bad_col].dtype}'."
+        )
 
-        if col == "close" and not allow_zero_prices:
-            non_positive = int((df[col] <= 0).sum())
-            if non_positive > 0:
-                raise ValidationError(
-                    f"Column '{col}' contains {non_positive} non-positive values (<= 0). "
-                    "Financial asset prices must be strictly positive."
-                )
+    if "close" in req_index and not allow_zero_prices:
+        non_positive = int(np.sum(df["close"].to_numpy() <= 0))
+        if non_positive > 0:
+            raise ValidationError(
+                f"Column 'close' contains {non_positive} non-positive values (<= 0). "
+                "Financial asset prices must be strictly positive."
+            )
 
     return True
 
@@ -135,6 +138,7 @@ def validate_portfolio_weights(
         ValidationError: If weight specification is invalid.
     """
     n_assets = len(tickers)
+    tickers_arr = np.asarray(tickers, dtype=str)
 
     if isinstance(weights, Mapping):
         missing = set(tickers) - set(weights.keys())
@@ -142,30 +146,33 @@ def validate_portfolio_weights(
             raise ValidationError(
                 f"Weights dictionary is missing tickers: {sorted(missing)}"
             )
-        raw_vals = [float(weights[t]) for t in tickers]
+        raw_vals = pd.Series(weights).reindex(tickers).to_numpy(dtype=float)
     elif isinstance(weights, (Sequence, np.ndarray)) and not isinstance(weights, (str, bytes)):
         if len(weights) != n_assets:
             raise ValidationError(
                 f"Weights length ({len(weights)}) does not match asset count ({n_assets})."
             )
-        raw_vals = [float(w) for w in weights]
+        raw_vals = np.asarray(weights, dtype=float)
     else:
         raise ValidationError(f"Unsupported weights type: {type(weights).__name__}.")
 
-    if any(np.isnan(w) or np.isinf(w) for w in raw_vals):
+    if not np.all(np.isfinite(raw_vals)):
         raise ValidationError("Portfolio weights contain NaN or infinite values.")
 
-    if not allow_short and any(w < 0 for w in raw_vals):
-        negative_weights = {t: w for t, w in zip(tickers, raw_vals, strict=False) if w < 0}
+    if not allow_short and np.any(raw_vals < 0):
+        neg_mask = raw_vals < 0
+        negative_weights = dict(
+            zip(tickers_arr[neg_mask].tolist(), raw_vals[neg_mask].tolist(), strict=False)
+        )
         raise ValidationError(
             f"Negative weights detected while allow_short=False: {negative_weights}."
         )
 
-    total_w = sum(raw_vals)
+    total_w = float(np.sum(raw_vals))
     if abs(total_w) < 1e-9:
         raise ValidationError("Sum of portfolio weights cannot be zero.")
 
-    normalized = [w / total_w for w in raw_vals]
-    return {t: round(w, 8) for t, w in zip(tickers, normalized, strict=False)}
+    normalized = np.round(raw_vals / total_w, 8)
+    return dict(zip(tickers, normalized.tolist(), strict=False))
 
 

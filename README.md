@@ -290,12 +290,12 @@ Un `dataclass` que agrega múltiples activos `PriceSeries`, gestiona sus pondera
 | `weights` | `Dict / List / None` | Ponderaciones (si es `None`, asigna pesos equiponderados $1/N$) |
 | `weights_dict` | `Dict[str, float]` | Diccionario normalizado que suma 1.0 (auto-calculado) |
 | `returns_df` | `pd.DataFrame` | Matriz alineada por fecha de retornos individuales (auto-calculado) |
-| `portfolio_returns` | `pd.Series` | Serie temporal de retornos diarios de la cartera $R_p = \sum w_i R_i$ |
+| `portfolio_returns` | `pd.Series` | Serie temporal vectorizada de retornos diarios $\mathbf{r}_p = \mathbf{R}\mathbf{w}$ (`returns_df @ weights_vector`) |
 | `mean_return` / `std_return` | `float` | Media y volatilidad diaria de la cartera (auto-calculadas) |
 | `covariance_matrix` | `pd.DataFrame` | Matriz de covarianza diaria entre activos |
 | `correlation_matrix` | `pd.DataFrame` | Matriz de correlación diaria entre activos |
 | `__len__()` | `int` | Número de activos integrantes de la cartera |
-| `__getitem__(ticker)` | `PriceSeries` | Acceso directo indexado por clave de ticker (`portfolio['AAPL']`) |
+| `__getitem__(ticker)` | `PriceSeries` | Acceso directo $O(1)$ por clave de ticker (`portfolio['AAPL']`) vía `_asset_map` |
 | `annualized_return()` | `float` | Rentabilidad anualizada de la cartera |
 | `annualized_volatility()` | `float` | Volatilidad anualizada de la cartera |
 | `sharpe_ratio()` | `float` | Ratio de Sharpe de la cartera |
@@ -706,12 +706,12 @@ A `dataclass` aggregating multiple `PriceSeries` assets, managing weights, valid
 | `weights` | `Dict / List / None` | Allocations (defaults to equal weighting $1/N$ if `None`) |
 | `weights_dict` | `Dict[str, float]` | Normalized weight dictionary summing to 1.0 |
 | `returns_df` | `pd.DataFrame` | Aligned daily return matrix across all assets |
-| `portfolio_returns` | `pd.Series` | Daily portfolio return series $R_p = \sum w_i R_i$ |
+| `portfolio_returns` | `pd.Series` | Vectorized daily portfolio return series $\mathbf{r}_p = \mathbf{R}\mathbf{w}$ (`returns_df @ weights_vector`) |
 | `mean_return` / `std_return` | `float` | Daily mean and volatility of portfolio returns |
 | `covariance_matrix` | `pd.DataFrame` | Daily return covariance matrix |
 | `correlation_matrix` | `pd.DataFrame` | Daily return correlation matrix |
 | `__len__()` | `int` | Number of constituent assets |
-| `__getitem__(ticker)` | `PriceSeries` | Direct indexing access by ticker (`portfolio['AAPL']`) |
+| `__getitem__(ticker)` | `PriceSeries` | Direct $O(1)$ indexing access by ticker (`portfolio['AAPL']`) via `_asset_map` |
 | `annualized_return()` | `float` | Annualized portfolio return |
 | `annualized_volatility()` | `float` | Annualized portfolio volatility |
 | `sharpe_ratio()` | `float` | Annualized Sharpe ratio |
