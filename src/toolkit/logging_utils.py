@@ -30,9 +30,11 @@ def setup_logging(level: int | str = logging.INFO, fmt: str = DEFAULT_FORMAT) ->
     """
     logger = logging.getLogger(PACKAGE_LOGGER)
     logger.setLevel(level)
-    for handler in list(logger.handlers):
-        if getattr(handler, "_toolkit_handler", False):
-            logger.removeHandler(handler)
+    existing_toolkit_handlers = filter(
+        lambda h: getattr(h, "_toolkit_handler", False),
+        list(logger.handlers),
+    )
+    list(map(logger.removeHandler, existing_toolkit_handlers))
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter(fmt, datefmt=DEFAULT_DATEFMT))

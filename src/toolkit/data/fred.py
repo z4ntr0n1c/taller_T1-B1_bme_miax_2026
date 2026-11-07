@@ -121,29 +121,27 @@ class FREDExtractor(BaseDataExtractor):
             batch_df: pd.DataFrame = web.DataReader(ticker_list, "fred", start=start, end=end)
         except Exception as exc:
             logger.debug("pandas_datareader batch failed (%s), fetching series via fredgraph.csv", exc)
-            frames = [_fetch_fred_csv(t, start, end) for t in ticker_list]
+            frames = list(map(lambda t: _fetch_fred_csv(t, start, end), ticker_list))
             batch_df = pd.concat(frames, axis=1, join="outer").sort_index()
 
-        results: list[PriceSeries] = []
-        for ticker in ticker_list:
+        def _extract_fred_series(ticker: str) -> PriceSeries | None:
             if ticker not in batch_df.columns:
                 logger.warning("FRED: series '%s' not found in batch response.", ticker)
-                continue
+                return None
 
             series_df = batch_df[[ticker]].dropna()
             if series_df.empty:
                 logger.warning("FRED: series '%s' has no valid observations.", ticker)
-                continue
+                return None
 
             std_df = self._standardize_dataframe(series_df, ticker)
-            results.append(
-                PriceSeries(
-                    ticker=ticker.upper(),
-                    asset_type=asset_type,
-                    data=std_df,
-                )
+            return PriceSeries(
+                ticker=ticker.upper(),
+                asset_type=asset_type,
+                data=std_df,
             )
 
+        results: list[PriceSeries] = list(filter(None, map(_extract_fred_series, ticker_list)))
         logger.info("FRED batch: %d/%d series loaded", len(results), len(ticker_list))
         return results
 

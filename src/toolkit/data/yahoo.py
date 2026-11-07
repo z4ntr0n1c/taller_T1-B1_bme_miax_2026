@@ -95,27 +95,25 @@ class YahooFinanceExtractor(BaseDataExtractor):
         if batch_df is None or batch_df.empty:
             return []
 
-        results: list[PriceSeries] = []
-        for ticker in ticker_list:
+        def _extract_ticker_series(ticker: str) -> PriceSeries | None:
             try:
                 ticker_df = batch_df[ticker].dropna(how="all")
             except KeyError:
                 logger.warning("Yahoo Finance: ticker '%s' not found in batch response.", ticker)
-                continue
+                return None
 
             if ticker_df.empty:
                 logger.warning("Yahoo Finance: no price rows returned for '%s'.", ticker)
-                continue
+                return None
 
             std_df = self._standardize_dataframe(ticker_df)
-            results.append(
-                PriceSeries(
-                    ticker=ticker.upper(),
-                    asset_type=asset_type,
-                    data=std_df,
-                )
+            return PriceSeries(
+                ticker=ticker.upper(),
+                asset_type=asset_type,
+                data=std_df,
             )
 
+        results: list[PriceSeries] = list(filter(None, map(_extract_ticker_series, ticker_list)))
         logger.info("Yahoo batch: %d/%d tickers loaded", len(results), len(ticker_list))
         return results
 
@@ -124,8 +122,8 @@ class YahooFinanceExtractor(BaseDataExtractor):
         """Normalize column names to lowercase and calculate daily returns."""
         out = df.copy()
         if isinstance(out.columns, pd.MultiIndex):
-            out.columns = [str(col[0]).lower() for col in out.columns]
+            out.columns = out.columns.get_level_values(0).astype(str).str.lower()
         else:
-            out.columns = [str(col).lower() for col in out.columns]
+            out.columns = out.columns.astype(str).str.lower()
 
         return BaseDataExtractor._normalize_close_dataframe(out, close_col="close")
