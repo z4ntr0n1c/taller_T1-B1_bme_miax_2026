@@ -16,6 +16,7 @@ env/
 
 # Data / outputs
 data/
+!src/toolkit/data/
 reports/
 *.png
 

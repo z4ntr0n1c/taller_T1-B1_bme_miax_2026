@@ -6,8 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pandas as pd
 
+from ..utils.validation import ValidationError, validate_price_dataframe
 from . import metrics
 
 if TYPE_CHECKING:
@@ -34,17 +36,45 @@ class PriceSeries:
 
     def __post_init__(self) -> None:
         """Validate ``'close'`` column, ensure ``'returns'`` exist, and compute base stats."""
-        if "close" not in self.data.columns:
-            raise ValueError("Input data must contain a 'close' column.")
-
+        validate_price_dataframe(self.data, required_columns=("close",))
         self.ticker = self.ticker.strip().upper()
         self.data = self.data.copy()
-        if "returns" not in self.data.columns:
-            self.data["returns"] = self.data["close"].pct_change()
+        calculated_returns = self.data["close"].pct_change(fill_method=None)
+        if not np.isfinite(calculated_returns.dropna().to_numpy(dtype=float)).all():
+            raise ValidationError(
+                "Calculated column 'returns' contains non-finite values."
+            )
+
+        if "returns" in self.data.columns:
+            if not pd.api.types.is_numeric_dtype(self.data["returns"]):
+                raise ValidationError("Column 'returns' must contain numeric data.")
+
+            provided_returns = self.data["returns"].to_numpy(dtype=float, na_value=np.nan)
+            if np.isinf(provided_returns).any():
+                raise ValidationError("Column 'returns' contains infinite values.")
+            if self.data["returns"].dropna().empty:
+                raise ValidationError(
+                    "Column 'returns' must contain at least one valid observation."
+                )
+            if not np.allclose(
+                provided_returns,
+                calculated_returns.to_numpy(dtype=float),
+                rtol=1e-5,
+                atol=1e-8,
+                equal_nan=True,
+            ):
+                raise ValidationError("Column 'returns' is inconsistent with 'close' prices.")
+
+        self.data["returns"] = calculated_returns
 
         clean_returns = self.returns
-        self.mean_return = float(clean_returns.mean()) if not clean_returns.empty else 0.0
-        self.std_return = float(clean_returns.std()) if not clean_returns.empty else 0.0
+        if clean_returns.empty:
+            raise ValidationError("Column 'returns' must contain at least one valid observation.")
+
+        self.mean_return = float(clean_returns.mean())
+        self.std_return = float(clean_returns.std())
+        if not np.isfinite(self.mean_return) or not np.isfinite(self.std_return):
+            raise ValidationError("Calculated return statistics contain non-finite values.")
 
     def __len__(self) -> int:
         """Return the number of valid return observations in the series."""

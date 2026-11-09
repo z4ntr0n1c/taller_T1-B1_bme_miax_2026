@@ -17,9 +17,10 @@ def clean_missing_values(
 
     Strategies:
       - 'ffill': Forward-fills missing quotes (appropriate for financial time series where
-                 exchange holidays imply no price change), followed by bfill for leading NaNs.
+                 exchange holidays imply no price change). Leading NaNs and remaining gaps
+                 beyond the limit are dropped to avoid filling from future observations.
       - 'drop': Removes rows containing any NaN.
-      - 'interpolate': Linearly interpolates between valid observations.
+      - 'interpolate': Linearly interpolates between valid observations. Leading NaNs are dropped.
 
     Args:
         df: Input DataFrame with DatetimeIndex.
@@ -40,11 +41,18 @@ def clean_missing_values(
         return df_clean.dropna(subset=target_cols)
 
     if method == "ffill":
-        df_clean[target_cols] = df_clean[target_cols].ffill(limit=max_consecutive_nans).bfill()
+        if max_consecutive_nans is not None and (
+            isinstance(max_consecutive_nans, bool)
+            or not isinstance(max_consecutive_nans, int)
+            or max_consecutive_nans < 1
+        ):
+            raise ValueError("max_consecutive_nans must be a positive integer or None.")
+
+        df_clean[target_cols] = df_clean[target_cols].ffill(limit=max_consecutive_nans)
         return df_clean.dropna(subset=target_cols)
 
     if method == "interpolate":
-        df_clean[target_cols] = df_clean[target_cols].interpolate(method="time").bfill()
+        df_clean[target_cols] = df_clean[target_cols].interpolate(method="time")
         return df_clean.dropna(subset=target_cols)
 
     raise ValueError(
@@ -86,7 +94,7 @@ def align_calendar_series(
     if join_method == "inner":
         aligned = combined.dropna()
     elif join_method == "outer_ffill":
-        aligned = combined.ffill().bfill().dropna()
+        aligned = combined.ffill().dropna()
     else:
         raise ValueError(f"Unknown join method '{join_method}'. Use 'inner' or 'outer_ffill'.")
 
@@ -109,5 +117,3 @@ def filter_anomalous_returns(
     """
     mask = returns_series.abs() > max_abs_return
     return returns_series[~mask], returns_series[mask]
-
-

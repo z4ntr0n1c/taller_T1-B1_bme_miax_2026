@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .models.metrics import validate_confidence_level
+
 if TYPE_CHECKING:
     from .monte_carlo import MonteCarloResult
     from .portfolio import Portfolio
@@ -50,6 +52,7 @@ def build_portfolio_report(
     Returns:
         Markdown string with formatted tables and automated risk diagnostics.
     """
+    validate_confidence_level(confidence_level)
     conf_pct = int(confidence_level * 100)
     cum_ret = float((1.0 + portfolio.portfolio_returns).prod() - 1.0)
     ann_ret = portfolio.annualized_return()
@@ -366,6 +369,7 @@ def plot_monte_carlo(
     """
     import matplotlib.pyplot as plt
 
+    validate_confidence_level(confidence_level)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
     plot_title = title or (
         f"Monte Carlo Simulation: {result.name} "

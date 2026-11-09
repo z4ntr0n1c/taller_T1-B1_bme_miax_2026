@@ -59,6 +59,10 @@ class Portfolio:
         """Validate inputs, align asset time series, normalize weights, and compute metrics."""
         if not self.assets:
             raise ValueError("Portfolio must contain at least one PriceSeries asset.")
+        if not np.isfinite(self.initial_capital) or self.initial_capital < 0:
+            raise ValueError(
+                f"initial_capital must be a non-negative finite number, got {self.initial_capital}"
+            )
 
         for asset in self.assets:
             if not isinstance(asset, PriceSeries):
@@ -76,17 +80,17 @@ class Portfolio:
         self._compute_metrics()
 
     def _align_data(self) -> None:
-        """Align asset returns and close prices across calendars using inner join."""
-        returns_dict = {asset.ticker: asset.data["returns"] for asset in self.assets}
+        """Align asset prices first, then calculate returns over identical intervals."""
         prices_dict = {asset.ticker: asset.data["close"] for asset in self.assets}
 
-        self.returns_df = align_calendar_series(returns_dict, join_method="inner")
+        aligned_prices = align_calendar_series(prices_dict, join_method="inner")
+        self.returns_df = aligned_prices.pct_change(fill_method=None).dropna()
         if self.returns_df.empty:
             raise ValueError(
                 "Unable to align asset returns: No overlapping trading dates found across assets."
             )
 
-        self.prices_df = pd.DataFrame(prices_dict).reindex(self.returns_df.index)
+        self.prices_df = aligned_prices.reindex(self.returns_df.index)
 
     def _process_weights(self) -> None:
         """Validate and normalize weights using policy validation utilities."""
@@ -101,8 +105,11 @@ class Portfolio:
 
     def _compute_metrics(self) -> None:
         """Compute daily weighted returns, covariance, correlation, and basic stats."""
-        self.portfolio_returns = (self.returns_df * self.weights_vector).sum(axis=1)
-        self.portfolio_returns.name = "portfolio_returns"
+        self.portfolio_returns = pd.Series(
+            self.returns_df.to_numpy() @ self.weights_vector,
+            index=self.returns_df.index,
+            name="portfolio_returns",
+        )
 
         self.mean_return = (
             float(self.portfolio_returns.mean()) if not self.portfolio_returns.empty else 0.0
@@ -331,6 +338,3 @@ class Portfolio:
         from ..reports import plot_portfolio_dashboard
 
         return plot_portfolio_dashboard(self, figsize=figsize, save_path=save_path, show=show)
-
-
-

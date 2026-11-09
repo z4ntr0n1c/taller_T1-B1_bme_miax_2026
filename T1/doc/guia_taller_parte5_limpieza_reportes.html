@@ -102,6 +102,7 @@
 
   <h2>2. Limpieza de Datos y Sincronización Multicalendario</h2>
   <p>En <code>src/toolkit/utils/cleaning.py</code> se resuelven las discrepancias entre bolsas de diferentes geografías (p. ej., Wall Street abierto mientras Bolsa de Madrid cierra por festivo):</p>
+  <p>El forward-fill respeta <code>max_consecutive_nans</code>: solo se rellenan los primeros valores ausentes de cada hueco y se descartan las filas que sigan incompletas; el backward-fill se limita a valores ausentes iniciales.</p>
   <pre><code># 1. Tratamiento acotado de NaNs mediante forward-fill
 clean_df = clean_missing_values(df, method="ffill", max_consecutive_nans=5)
 
@@ -200,4 +201,3 @@ ALL 4.5 CLEANING, VALIDATION & REPORTING TESTS COMPLETED!
 
 </body>
 </html>
-

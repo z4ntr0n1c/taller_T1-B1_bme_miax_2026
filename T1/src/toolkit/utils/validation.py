@@ -97,8 +97,14 @@ def validate_price_dataframe(
                 f"Column '{col}' must contain numeric data, but has dtype '{df[col].dtype}'."
             )
 
+        values = df[col].to_numpy(dtype=float, na_value=np.nan)
+        if not np.isfinite(values).all():
+            raise ValidationError(
+                f"Column '{col}' contains missing or non-finite values."
+            )
+
         if col == "close" and not allow_zero_prices:
-            non_positive = int((df[col] <= 0).sum())
+            non_positive = int((values <= 0).sum())
             if non_positive > 0:
                 raise ValidationError(
                     f"Column '{col}' contains {non_positive} non-positive values (<= 0). "
@@ -167,5 +173,3 @@ def validate_portfolio_weights(
 
     normalized = [w / total_w for w in raw_vals]
     return {t: round(w, 8) for t, w in zip(tickers, normalized, strict=False)}
-
-

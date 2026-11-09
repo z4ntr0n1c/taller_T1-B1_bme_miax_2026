@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from .metrics import TRADING_DAYS_PER_YEAR
+from .metrics import TRADING_DAYS_PER_YEAR, validate_confidence_level
 
 
 @dataclass
@@ -97,11 +97,13 @@ class MonteCarloResult:
 
     def terminal_var(self, confidence_level: float = 0.95) -> float:
         """Compute Value at Risk (VaR) in monetary units at the terminal horizon."""
+        validate_confidence_level(confidence_level)
         cutoff = float(np.percentile(self.terminal_values, (1.0 - confidence_level) * 100.0))
         return float(max(0.0, self.initial_value - cutoff))
 
     def terminal_cvar(self, confidence_level: float = 0.95) -> float:
         """Compute Conditional Value at Risk (CVaR / Expected Shortfall) in monetary units."""
+        validate_confidence_level(confidence_level)
         cutoff = float(np.percentile(self.terminal_values, (1.0 - confidence_level) * 100.0))
         tail = self.terminal_values[self.terminal_values <= cutoff]
         if len(tail) == 0:
@@ -110,6 +112,7 @@ class MonteCarloResult:
 
     def summary(self, confidence_level: float = 0.95) -> dict[str, Any]:
         """Generate a comprehensive diagnostic summary of the Monte Carlo simulation."""
+        validate_confidence_level(confidence_level)
         pcts = self.percentiles((0.05, 0.25, 0.50, 0.75, 0.95))
         conf_pct = int(confidence_level * 100)
         return {
@@ -168,14 +171,23 @@ def _validate_simulation_params(
     sigma: float = 0.0,
 ) -> None:
     """Validate common Monte Carlo input parameters."""
-    if initial_value <= 0:
+    if not np.isfinite(initial_value) or initial_value <= 0:
         raise ValueError(f"initial_value must be positive, got {initial_value}")
-    if horizon <= 0:
+    if isinstance(horizon, bool) or not isinstance(horizon, (int, np.integer)) or horizon <= 0:
         raise ValueError(f"horizon must be positive integer, got {horizon}")
-    if n_simulations <= 0:
+    if (
+        isinstance(n_simulations, bool)
+        or not isinstance(n_simulations, (int, np.integer))
+        or n_simulations <= 0
+    ):
         raise ValueError(f"n_simulations must be positive integer, got {n_simulations}")
-    if sigma < 0:
+    if not np.isfinite(sigma) or sigma < 0:
         raise ValueError(f"sigma must be non-negative, got {sigma}")
+
+
+def _validate_time_step(dt: float) -> None:
+    if not np.isfinite(dt) or dt <= 0:
+        raise ValueError(f"dt must be a positive finite number, got {dt}")
 
 
 class MonteCarloEngine:
@@ -197,6 +209,9 @@ class MonteCarloEngine:
         $$S_{t+1} = S_t \\exp\\left((\\mu - \\tfrac{1}{2}\\sigma^2)\\Delta t + \\sigma\\sqrt{\\Delta t}\\,Z_t\\right)$$
         """
         _validate_simulation_params(initial_value, horizon, n_simulations, sigma)
+        if not np.isfinite(mu):
+            raise ValueError(f"mu must be finite, got {mu}")
+        _validate_time_step(dt)
         rng = np.random.default_rng(seed)
 
         drift = (mu - 0.5 * (sigma**2)) * dt
@@ -236,32 +251,59 @@ class MonteCarloEngine:
     ) -> MonteCarloResult:
         """Simulate portfolio paths using correlated multivariate Geometric Brownian Motion.
 
-        Generates correlated Gaussian shocks in a fully vectorized manner using the
-        Cholesky decomposition of the empirical covariance matrix ($\\boldsymbol{\\Sigma} = \\boldsymbol{L}\\boldsymbol{L}^T$).
+        Generates correlated Gaussian shocks using Cholesky for positive-definite
+        covariances and an eigenvalue factorization for singular positive-semidefinite ones.
         """
         _validate_simulation_params(initial_capital, horizon, n_simulations)
+        _validate_time_step(dt)
         n_assets = len(weights)
+        if n_assets == 0:
+            raise ValueError("weights must contain at least one asset.")
+        if weights.shape != (n_assets,) or mu_vector.shape != (n_assets,):
+            raise ValueError("weights and mu_vector must be one-dimensional arrays of equal length.")
         if cov_matrix.shape != (n_assets, n_assets):
             raise ValueError(
                 f"Covariance matrix shape {cov_matrix.shape} does not match "
                 f"number of assets ({n_assets})."
             )
+        if not np.isfinite(weights).all():
+            raise ValueError("weights must contain only finite values.")
+        if np.any(weights < 0):
+            raise ValueError("weights must be non-negative.")
+        if not np.isfinite(mu_vector).all():
+            raise ValueError("mu_vector must contain only finite values.")
+        if not np.isfinite(cov_matrix).all():
+            raise ValueError("cov_matrix must contain only finite values.")
+
+        covariance_scale = float(np.max(np.abs(cov_matrix)))
+        symmetry_tolerance = (
+            100.0 * np.finfo(float).eps * max(n_assets, 1) * covariance_scale
+        )
+        if np.max(np.abs(cov_matrix - cov_matrix.T)) > symmetry_tolerance:
+            raise ValueError("cov_matrix must be symmetric.")
+
+        symmetric_cov = (cov_matrix + cov_matrix.T) / 2.0
+        eigvals, eigvecs = np.linalg.eigh(symmetric_cov)
+        eigenvalue_tolerance = (
+            100.0
+            * np.finfo(float).eps
+            * max(n_assets, 1)
+            * max(float(np.max(np.abs(eigvals))), np.finfo(float).tiny)
+        )
+        if eigvals[0] < -eigenvalue_tolerance:
+            raise ValueError("cov_matrix must be positive semidefinite.")
 
         rng = np.random.default_rng(seed)
-
-        try:
-            chol = np.linalg.cholesky(cov_matrix * dt)
-        except np.linalg.LinAlgError:
-            eigvals, eigvecs = np.linalg.eigh(cov_matrix * dt)
-            eigvals = np.maximum(eigvals, 1e-8)
-            chol = np.linalg.cholesky(eigvecs @ np.diag(eigvals) @ eigvecs.T)
-
-        vol_vector = np.sqrt(np.diag(cov_matrix))
+        if eigvals[0] > eigenvalue_tolerance:
+            covariance_factor = np.linalg.cholesky(symmetric_cov)
+        else:
+            covariance_factor = eigvecs * np.sqrt(np.maximum(eigvals, 0.0))[np.newaxis, :]
+        vol_vector = np.sqrt(np.maximum(np.diag(symmetric_cov), 0.0))
         drift_vector = (mu_vector - 0.5 * (vol_vector**2)) * dt
 
         # Vectorized correlated shocks across (horizon, n_assets, n_simulations)
         uncorrelated = rng.standard_normal(size=(horizon, n_assets, n_simulations))
-        correlated_shocks = chol @ uncorrelated
+        correlated_shocks = covariance_factor @ uncorrelated * np.sqrt(dt)
         step_log_returns = drift_vector[np.newaxis, :, np.newaxis] + correlated_shocks
         cum_log_returns = np.cumsum(step_log_returns, axis=0)
 
@@ -274,7 +316,8 @@ class MonteCarloEngine:
         ])
 
         portfolio_mu = float(np.sum(weights * mu_vector))
-        portfolio_sigma = float(np.sqrt(weights.T @ cov_matrix @ weights))
+        portfolio_variance = float(weights.T @ symmetric_cov @ weights)
+        portfolio_sigma = float(np.sqrt(max(portfolio_variance, 0.0)))
 
         return MonteCarloResult(
             name=name,
@@ -286,5 +329,3 @@ class MonteCarloEngine:
             sigma=portfolio_sigma,
             method="multivariate_gbm",
         )
-
-
