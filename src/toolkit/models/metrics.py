@@ -14,6 +14,20 @@ import pandas as pd
 TRADING_DAYS_PER_YEAR = 252
 
 
+def validate_confidence_level(confidence_level: float) -> None:
+    """Validate a probability threshold used by VaR and related risk metrics."""
+    if (
+        isinstance(confidence_level, (bool, np.bool_))
+        or not isinstance(confidence_level, (int, float, np.integer, np.floating))
+        or not np.isfinite(confidence_level)
+        or not 0.0 < confidence_level < 1.0
+    ):
+        raise ValueError(
+            f"confidence_level must be a finite number strictly between 0 and 1, "
+            f"got {confidence_level!r}."
+        )
+
+
 def compute_annualized_return(
     mean_return: float,
     has_observations: bool = True,
@@ -52,7 +66,7 @@ def compute_cumulative_returns(returns: pd.Series) -> pd.Series:
 def compute_drawdown_series(returns: pd.Series) -> pd.Series:
     """Compute underwater drawdown series relative to running wealth peak."""
     wealth = (1.0 + returns).cumprod()
-    running_max = wealth.cummax()
+    running_max = wealth.cummax().clip(lower=1.0)
     return (wealth - running_max) / running_max
 
 
@@ -82,8 +96,9 @@ def compute_value_at_risk(
         Daily VaR expressed as a decimal return (typically negative).
 
     Raises:
-        ValueError: If ``method`` is not ``"historical"`` or ``"parametric"``.
+        ValueError: If the confidence level or ``method`` is invalid.
     """
+    validate_confidence_level(confidence_level)
     if returns.empty:
         return 0.0
 
@@ -104,9 +119,9 @@ def compute_conditional_value_at_risk(
     confidence_level: float = 0.95,
 ) -> float:
     """Compute daily Conditional Value at Risk (CVaR / Expected Shortfall)."""
+    validate_confidence_level(confidence_level)
     if returns.empty:
         return 0.0
     var = compute_value_at_risk(returns, confidence_level=confidence_level, method="historical")
     tail = returns[returns <= var]
     return float(tail.mean()) if not tail.empty else var
-

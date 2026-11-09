@@ -320,12 +320,13 @@ Un `dataclass` que agrega múltiples activos `PriceSeries`, gestiona sus pondera
 #### 4. Preprocesado, Limpieza y Validación de Inputs (`utils/`)
 
 - **`utils/cleaning.py`**:
-  - `clean_missing_values(df, method='ffill')`: Tratamiento robusto de NaNs (forward-fill con límite de huecos para festivos bursátiles, backward-fill para el arranque o eliminación).
+  - `clean_missing_values(df, method='ffill')`: Rellena hacia delante hasta el límite indicado (`max_consecutive_nans`) y descarta los valores ausentes iniciales o los huecos interiores que superen el límite para evitar *look-ahead bias*.
   - `align_calendar_series(series_map, join_method='inner')`: Sincronización temporal entre calendarios de diferentes bolsas (NYSE vs. BME).
   - `filter_anomalous_returns(series)`: Detección y filtrado de anomalías o splits no ajustados.
 - **`utils/validation.py` (Política de Validación Estricta)**:
   - *Justificación*: En finanzas cuantitativas, la admisión de inputs arbitrarios corrompe las matrices de covarianza, genera división por cero en precios no positivos y distorsiona el Sharpe ratio. Por ello se aplica una política de **fallo temprano (*fail-fast*)**.
-  - `validate_price_dataframe(df)`: Exige `DatetimeIndex`, orden monotónico estricto, sin duplicados temporales, presencia de columna `'close'` numérica y **precios estrictamente positivos (> 0)**.
+  - `validate_price_dataframe(df)`: Exige `DatetimeIndex`, orden monotónico estricto, sin duplicados temporales, presencia de columna `'close'` numérica finita y **precios estrictamente positivos (> 0)**.
+  - `PriceSeries` aplica esta validación al construirse y exige al menos cinco observaciones; `Portfolio` vuelve a validar los activos antes de agregarlos.
   - `validate_portfolio_weights(weights, tickers)`: Valida dimensiones, ausencia de NaNs/infinitos, restricciones de cortos y normalización exacta a 1.0.
 
 ---
@@ -735,11 +736,12 @@ A `dataclass` aggregating multiple `PriceSeries` assets, managing weights, valid
 #### 4. Preprocessing, Cleaning & Input Validation (`utils/`)
 
 - **`utils/cleaning.py`**:
-  - `clean_missing_values(df, method='ffill')`: Missing value imputation with forward-fill limits suited for market holidays.
+  - `clean_missing_values(df, method='ffill')`: Forward-fills up to the configured limit (`max_consecutive_nans`) and drops leading NaNs or remaining interior gaps to avoid filling from future observations.
   - `align_calendar_series(series_map, join_method='inner')`: Synchronizes differing trading calendars across exchanges.
 - **`utils/validation.py` (Strict Input Policy)**:
   - *Justification*: Unconstrained inputs cause silent failures in quantitative finance (e.g., negative prices producing NaN returns, non-positive definite covariances). Strict validation enforces fail-fast integrity.
-  - `validate_price_dataframe(df)`: Enforces `DatetimeIndex`, monotonic order, uniqueness, required numeric `'close'`, and strictly positive prices.
+  - `validate_price_dataframe(df)`: Enforces `DatetimeIndex`, monotonic order, uniqueness, required finite numeric `'close'`, and strictly positive prices.
+  - `PriceSeries` applies this validation at construction and requires at least five observations; `Portfolio` validates its assets again before aggregation.
   - `validate_portfolio_weights(weights, tickers)`: Enforces dimension match, finite values, short constraints, and exact normalization.
 
 ---

@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import date
 
+import numpy as np
 import pandas as pd
 
 from ..models.series import PriceSeries
@@ -64,6 +65,7 @@ class BaseDataExtractor(ABC):
             raise KeyError(f"Downloaded data is missing a '{close_col}' column.")
 
         out["close"] = pd.to_numeric(out["close"], errors="coerce")
+        out["close"] = out["close"].replace([np.inf, -np.inf], np.nan)
         out = out.dropna(subset=["close"])
-        out["returns"] = out["close"].pct_change()
+        out["returns"] = out["close"].pct_change(fill_method=None)
         return out[["close", "returns"]]

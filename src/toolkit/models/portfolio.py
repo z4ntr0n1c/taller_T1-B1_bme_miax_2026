@@ -61,6 +61,14 @@ class Portfolio:
         """Validate inputs, align asset time series, normalize weights, and compute metrics."""
         if not self.assets:
             raise ValueError("Portfolio must contain at least one PriceSeries asset.")
+        if (
+            isinstance(self.initial_capital, bool)
+            or not np.isfinite(self.initial_capital)
+            or self.initial_capital < 0
+        ):
+            raise ValueError(
+                f"initial_capital must be a non-negative finite number, got {self.initial_capital}"
+            )
 
         invalid_asset = next(
             filter(lambda a: not isinstance(a, PriceSeries), self.assets),
@@ -89,19 +97,19 @@ class Portfolio:
         self._compute_metrics()
 
     def _align_data(self) -> None:
-        """Align asset returns and close prices across calendars using inner join."""
+        """Align asset prices first, then calculate returns over identical intervals."""
         tickers = self.tickers
         data_frames = list(map(attrgetter("data"), self.assets))
-        returns_dict = dict(zip(tickers, map(itemgetter("returns"), data_frames), strict=False))
         prices_dict = dict(zip(tickers, map(itemgetter("close"), data_frames), strict=False))
 
-        self.returns_df = align_calendar_series(returns_dict, join_method="inner")
+        aligned_prices = align_calendar_series(prices_dict, join_method="inner")
+        self.returns_df = aligned_prices.pct_change(fill_method=None).dropna()
         if self.returns_df.empty:
             raise ValueError(
                 "Unable to align asset returns: No overlapping trading dates found across assets."
             )
 
-        self.prices_df = pd.DataFrame(prices_dict).reindex(self.returns_df.index)
+        self.prices_df = aligned_prices.reindex(self.returns_df.index)
 
     def _process_weights(self) -> None:
         """Validate and normalize weights using policy validation utilities."""
@@ -353,6 +361,3 @@ class Portfolio:
         from ..reports import plot_portfolio_dashboard
 
         return plot_portfolio_dashboard(self, figsize=figsize, save_path=save_path, show=show)
-
-
-

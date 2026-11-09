@@ -55,6 +55,15 @@ class FREDExtractor(BaseDataExtractor):
     extractor implementations.
     """
 
+    def _fetch_via_fred_csv(
+        self,
+        ticker: str,
+        start: date | str,
+        end: date | str | None = None,
+    ) -> pd.DataFrame:
+        """Fallback CSV fetch for public FRED series using the official FRED endpoint."""
+        return _fetch_fred_csv(ticker, start, end)
+
     def fetch_series(
         self,
         ticker: str,
@@ -80,7 +89,7 @@ class FREDExtractor(BaseDataExtractor):
             raw: pd.DataFrame = web.DataReader(ticker, "fred", start=start, end=end)
         except Exception as exc:
             logger.debug("pandas_datareader failed for %s (%s), falling back to fredgraph.csv", ticker, exc)
-            raw = _fetch_fred_csv(ticker, start, end)
+            raw = self._fetch_via_fred_csv(ticker, start, end)
 
         if raw is None or raw.empty:
             raise ValueError(
@@ -146,12 +155,15 @@ class FREDExtractor(BaseDataExtractor):
         return results
 
     @staticmethod
-    def _standardize_dataframe(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    def _standardize_dataframe(
+        df: pd.DataFrame,
+        series_name: str | None = None,
+    ) -> pd.DataFrame:
         """Normalize a raw FRED DataFrame to the canonical ``'close'`` / ``'returns'`` schema.
 
         Args:
             df: Raw DataFrame from ``pandas_datareader`` or ``fredgraph.csv``.
-            ticker: FRED series ID used to locate the column when ``df`` is multi-column.
+            series_name: FRED series ID used to locate the column when ``df`` is multi-column.
 
         Returns:
             DataFrame with ``DatetimeIndex`` named ``'date'``, columns ``['close', 'returns']``.
@@ -159,12 +171,14 @@ class FREDExtractor(BaseDataExtractor):
         Raises:
             KeyError: If the target series column cannot be found.
         """
-        if ticker in df.columns:
-            close_col = ticker
+        if series_name is not None and series_name in df.columns:
+            close_col = series_name
         elif len(df.columns) == 1:
             close_col = str(df.columns[0])
         else:
-            raise KeyError(f"Could not locate column for series '{ticker}' in FRED response.")
+            raise KeyError(
+                f"Could not locate column for series '{series_name}' in FRED response."
+            )
 
         return BaseDataExtractor._normalize_close_dataframe(df, close_col=close_col)
 
