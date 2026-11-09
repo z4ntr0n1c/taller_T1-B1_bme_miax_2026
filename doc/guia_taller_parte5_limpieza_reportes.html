@@ -127,10 +127,40 @@ aligned_returns = align_calendar_series(series_dict, join_method="inner")</code>
     <li><strong>Panel 4 (Inferior Derecho)</strong>: Histograma y función de densidad de retornos diarios con cotas de media, VaR 95% y CVaR 95%.</li>
   </ul>
 
-  <h2>5. Verificación y Resultados de Ejecución (Suite Offline y Reportes)</h2>
-  <p>Ejecución de <code>examples/test_reports_and_cleaning.py</code> y de la suite de tests unitarios sin red (<code>tests/test_toolkit.py</code>):</p>
+  <h2>5. Verificación y Ejecución de Tests (Suite Unitaria Offline y Scripts)</h2>
+  <p>La validación del paquete se organiza en dos niveles complementarios que pueden lanzarse desde la terminal con el entorno virtual <code>.venv</code> activo:</p>
+  <ol>
+    <li><strong>Suite de 19 tests unitarios sin conexión a red (<code>tests/test_toolkit.py</code>)</strong>: Ejecutable mediante <code>python -m unittest discover -s tests -v</code> (o <code>pytest -v</code>).</li>
+    <li><strong>Scripts de validación extremo a extremo (<code>examples/test_*.py</code>)</strong>: Ejecutables tanto desde la raíz (<code>python examples/test_reports_and_cleaning.py</code>) como desde el propio directorio <code>examples/</code>.</li>
+  </ol>
 
-  <div class="terminal-box"><span class="term-env">(.venv)</span> <span class="term-user">sergio@sergio-xps-deb</span>:<span class="term-path">~/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/T1</span>$ python examples/test_reports_and_cleaning.py
+  <div class="terminal-box"><span class="term-env">(.venv)</span> <span class="term-user">sergio@sergio-xps-deb</span>:<span class="term-path">~/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/Taller-T1-B1</span>$ python -m unittest discover -s tests -v
+<span class="term-out">test_calendar_alignment_does_not_backfill_from_future (test_toolkit.TestToolkitOffline) ... ok
+test_cleaning_and_alignment (test_toolkit.TestToolkitOffline) ... ok
+test_cleaning_does_not_fill_long_interior_gaps (test_toolkit.TestToolkitOffline) ... ok
+test_drawdown_includes_initial_wealth_peak (test_toolkit.TestToolkitOffline) ... ok
+test_fred_csv_fallback_parses_observation_dates (test_toolkit.TestToolkitOffline) ... ok
+test_fred_standardization_drops_missing_observations (test_toolkit.TestToolkitOffline) ... ok
+test_monte_carlo_rejects_invalid_parameters (test_toolkit.TestToolkitOffline) ... ok
+test_monte_carlo_reproducibility (test_toolkit.TestToolkitOffline) ... ok
+test_multivariate_gbm_preserves_singular_covariance (test_toolkit.TestToolkitOffline) ... ok
+test_multivariate_gbm_rejects_negative_weights_only (test_toolkit.TestToolkitOffline) ... ok
+test_portfolio_metrics_and_reports (test_toolkit.TestToolkitOffline) ... ok
+test_portfolio_rejects_negative_or_nonfinite_initial_capital (test_toolkit.TestToolkitOffline) ... ok
+test_portfolio_returns_use_matching_price_intervals (test_toolkit.TestToolkitOffline) ... ok
+test_price_series_does_not_mutate_input_dataframe (test_toolkit.TestToolkitOffline) ... ok
+test_price_series_rejects_invalid_price_data (test_toolkit.TestToolkitOffline) ... ok
+test_setup_logging_is_idempotent (test_toolkit.TestToolkitOffline) ... ok
+test_standardize_dataframes (test_toolkit.TestToolkitOffline) ... ok
+test_validation_invariants (test_toolkit.TestToolkitOffline) ... ok
+test_var_rejects_invalid_confidence_levels (test_toolkit.TestToolkitOffline) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.872s
+
+OK</span></div>
+
+  <div class="terminal-box"><span class="term-env">(.venv)</span> <span class="term-user">sergio@sergio-xps-deb</span>:<span class="term-path">~/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/Taller-T1-B1</span>$ python examples/test_reports_and_cleaning.py
 <span class="term-out">===========================================================================
 1. TESTING INPUT VALIDATION & DATA CLEANING POLICY
 ===========================================================================
@@ -147,7 +177,7 @@ aligned_returns = align_calendar_series(series_dict, join_method="inner")</code>
 
    Fetching market data for ['AAPL', 'MSFT', 'SAN.MC', '^IBEX']...
 
-   [SUCCESS] Markdown Report generated and saved to: /home/sergio/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/T1/examples/reports/portfolio_report.md
+   [SUCCESS] Markdown Report generated and saved to: /home/sergio/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/Taller-T1-B1/examples/reports/portfolio_report.md
 
    --- Preview of Generated Markdown Report (First 40 lines) ---
    # 📊 Portfolio Quantitative Analysis & Risk Report: Tech-Weighted European Hybrid
@@ -192,12 +222,12 @@ aligned_returns = align_calendar_series(series_dict, join_method="inner")</code>
    | `SAN.MC` | -0.008 | 0.000 | 1.000 | 0.805 |
    [... report continues with Correlation Matrix & Diagnostics ...]
 
-   [SUCCESS] 4-Panel Analytics Dashboard exported to: /home/sergio/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/T1/examples/plots/portfolio_dashboard.png
+   [SUCCESS] 4-Panel Analytics Dashboard exported to: /home/sergio/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/Taller-T1-B1/examples/plots/portfolio_dashboard.png
 
 ===========================================================================
 ALL 4.5 CLEANING, VALIDATION & REPORTING TESTS COMPLETED!
 ===========================================================================</span>
-<span class="term-env">(.venv)</span> <span class="term-user">sergio@sergio-xps-deb</span>:<span class="term-path">~/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/T1</span>$</div>
+<span class="term-env">(.venv)</span> <span class="term-user">sergio@sergio-xps-deb</span>:<span class="term-path">~/Documents/Master_MIAX_BME/Talleres_Master_MIAX_BME/Taller-T1-B1</span>$</div>
 
 </body>
 </html>
