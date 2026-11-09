@@ -100,8 +100,14 @@ def validate_price_dataframe(
             f"Column '{bad_col}' must contain numeric data, but has dtype '{df[bad_col].dtype}'."
         )
 
+    req_values = df[list(required_columns)].to_numpy(dtype=float, na_value=np.nan)
+    finite_col_mask = np.isfinite(req_values).all(axis=0)
+    if not finite_col_mask.all():
+        bad_col = str(req_index[~finite_col_mask][0])
+        raise ValidationError(f"Column '{bad_col}' contains missing or non-finite values.")
+
     if "close" in req_index and not allow_zero_prices:
-        non_positive = int(np.sum(df["close"].to_numpy() <= 0))
+        non_positive = int(np.sum(df["close"].to_numpy(dtype=float) <= 0))
         if non_positive > 0:
             raise ValidationError(
                 f"Column 'close' contains {non_positive} non-positive values (<= 0). "

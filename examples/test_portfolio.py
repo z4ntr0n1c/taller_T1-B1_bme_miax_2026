@@ -9,6 +9,14 @@ Demonstrates:
   5. Key analytical metrics: Annualized Return, Volatility, Sharpe Ratio, Max Drawdown, VaR, CVaR
 """
 
+from pathlib import Path
+import sys
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 from toolkit.data import YahooFinanceExtractor
 from toolkit.models import Portfolio
 

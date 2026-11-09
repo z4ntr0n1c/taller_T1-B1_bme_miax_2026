@@ -61,6 +61,14 @@ class Portfolio:
         """Validate inputs, align asset time series, normalize weights, and compute metrics."""
         if not self.assets:
             raise ValueError("Portfolio must contain at least one PriceSeries asset.")
+        if (
+            isinstance(self.initial_capital, bool)
+            or not np.isfinite(self.initial_capital)
+            or self.initial_capital < 0
+        ):
+            raise ValueError(
+                f"initial_capital must be a non-negative finite number, got {self.initial_capital}"
+            )
 
         invalid_asset = next(
             filter(lambda a: not isinstance(a, PriceSeries), self.assets),
@@ -89,9 +97,10 @@ class Portfolio:
         self._compute_metrics()
 
     def _align_data(self) -> None:
-        """Align asset returns and close prices across calendars using inner join."""
-        returns_dict = {asset.ticker: asset.data["returns"] for asset in self.assets}
-        prices_dict = {asset.ticker: asset.data["close"] for asset in self.assets}
+        """Align asset prices first, then calculate returns over identical intervals."""
+        tickers = self.tickers
+        data_frames = list(map(attrgetter("data"), self.assets))
+        prices_dict = dict(zip(tickers, map(itemgetter("close"), data_frames), strict=False))
 
         aligned_prices = align_calendar_series(prices_dict, join_method="inner")
         self.returns_df = aligned_prices.pct_change(fill_method=None).dropna()
@@ -115,7 +124,7 @@ class Portfolio:
 
     def _compute_metrics(self) -> None:
         """Compute daily weighted returns, covariance, correlation, and basic stats."""
-        self.portfolio_returns = (self.returns_df * self.weights_vector).sum(axis=1)
+        self.portfolio_returns = self.returns_df @ self.weights_vector
         self.portfolio_returns.name = "portfolio_returns"
 
         self.mean_return = (
