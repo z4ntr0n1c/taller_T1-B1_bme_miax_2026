@@ -13,7 +13,7 @@
 
 Este proyecto implementa una toolbox profesional en Python para la ingesta, estandarización y análisis de información bursátil y macroeconómica, así como la gestión cuantitativa de carteras de inversión, simulación estocástica de **Monte Carlo** y generación automatizada de reportes formales (Markdown) y cuadros de mando visuales.
 
-El diseño sigue una arquitectura modular y desacoplada mediante patrones de diseño orientados a objetos y **DataClasses**, separando estrictamente la capa de extracción de la capa de análisis, modelos, preprocesado y motores de diagnóstico y simulación estocástica.
+El diseño sigue una arquitectura modular y desacoplada mediante patrones de diseño orientados a objetos y **DataClasses**, separando la capa de extracción de datos de los modelos analíticos, el preprocesado y los motores de diagnóstico y simulación estocástica.
 
 ### Estructura del repositorio taller 
 
@@ -236,7 +236,7 @@ Consulte el documento extendido de diseño en [`doc/architecture.md`](doc/archit
 
 #### 1. `PriceSeries` — Modelo de series temporales (`models/series.py`)
 
-Un `dataclass` interoperable que estandariza las series de cualquier fuente de datos:
+Un `dataclass` interoperable que estandariza series de distintas fuentes, como los precios de acciones e índices. Cada serie se representa con fechas, precios de cierre y retornos, sobre los que se calculan automáticamente la media y la desviación típica diarias.
 
 | Atributo / Método | Tipo | Descripción |
 |---|---|---|
@@ -253,6 +253,8 @@ Un `dataclass` interoperable que estandariza las series de cualquier fuente de d
 | `value_at_risk(0.95)` | `float` | VaR histórico diario al 95% de confianza |
 | `simulate_montecarlo()` | `MonteCarloResult` | Simulación estocástica de trayectorias (GBM) |
 | `plot_montecarlo()` | `Figure` | Genera y muestra visualmente las trayectorias y distribución |
+
+Al construir `PriceSeries`, se valida la estructura temporal, se exigen al menos cinco observaciones y precios de cierre positivos, y se comprueba que los retornos proporcionados sean numéricos y coherentes con esos precios. Las métricas anualizadas utilizan por defecto 252 días de negociación; por ello.
 
 #### 2. `Portfolio` — Modelo de Cartera de Inversión (`models/portfolio.py`)
 
@@ -283,6 +285,8 @@ Un `dataclass` que agrega múltiples activos `PriceSeries`, gestiona sus pondera
 | `report()` | `str` (Markdown) | Genera informe formal estructurado en Markdown con diagnósticos y alertas de riesgo |
 | `plots_report()` | `Figure` (Dashboard) | Genera panel gráfico 2x2: rendimiento comparado, drawdown, correlación y distribución VaR |
 
+Si no se especifican pesos, la cartera se construye con ponderaciones equiponderadas; también se pueden indicar pesos por activo. El modelo comprueba que haya activos válidos, sin tickers duplicados y con fechas comunes para el análisis.
+
 #### 3. Motor de Simulación Monte Carlo (`models/monte_carlo.py`)
 
 - **`MonteCarloEngine`**: Motor estocástico con dos modelos de difusión:
@@ -290,6 +294,8 @@ Un `dataclass` que agrega múltiples activos `PriceSeries`, gestiona sus pondera
   2. *GBM Multivariante Correlado* para carteras mediante descomposición de Cholesky ($\boldsymbol{\Sigma} = \boldsymbol{L}\boldsymbol{L}^T$) sobre la matriz empírica de covarianzas.
 - **`MonteCarloResult`**: Objeto con trayectorias ($S_t$), percentiles temporales ($5\%$, $50\%$, $95\%$), capital esperado, probabilidad de pérdida, VaR terminal y CVaR terminal monetarios.
 - **Visualización integrada**: Gráficos duales con cono de trayectorias y distribución terminal con cortes de VaR.
+
+Se tiene en valida que el número de simulaciones y el capital inicial sean positivos; la volatilidad no puede ser negativa y los parámetros deben ser finitos. En la modalidad multivariante también se validan las dimensiones, los pesos y que la matriz de covarianzas sea simétrica. Los resultados son escenarios condicionados por los parámetros y supuestos del GBM, no predicciones ni garantías de rentabilidad.
 
 #### 4. Preprocesado, Limpieza y Validación de Inputs (`utils/`)
 
@@ -299,9 +305,13 @@ Un `dataclass` que agrega múltiples activos `PriceSeries`, gestiona sus pondera
   - `filter_anomalous_returns(series)`: Detección y filtrado de anomalías o splits no ajustados.
 - **`utils/validation.py` (Política de Validación Estricta)**:
   - *Justificación*: En finanzas cuantitativas, la admisión de inputs arbitrarios corrompe las matrices de covarianza, genera división por cero en precios no positivos y distorsiona el Sharpe ratio. Por ello se aplica una política de **fallo temprano (*fail-fast*)**.
-  - `validate_price_dataframe(df)`: Exige `DatetimeIndex`, orden monotónico estricto, sin duplicados temporales, presencia de columna `'close'` numérica y **precios estrictamente positivos (> 0)**.
-  - `PriceSeries` aplica esta validación al construirse y exige al menos cinco observaciones; `Portfolio` vuelve a validar los activos antes de agregarlos.
+  - `validate_price_dataframe(df)`: Exige un `DataFrame` no vacío con al menos cinco observaciones, índice de fechas ordenado y único, columnas requeridas numéricas y precios de cierre positivos.
+  -`PriceSeries` también comprueba que los retornos calculados sean finitos y que una columna de retornos existente concuerde con los precios.
+  -`Portfolio` exige al menos un activo válido, rechaza tickers duplicados y requiere fechas coincidentes; valida además los pesos antes de agregarlos.
   - `validate_portfolio_weights(weights, tickers)`: Valida dimensiones, ausencia de NaNs/infinitos, restricciones de cortos y normalización exacta a 1.0.
+  - Los niveles de confianza de VaR/CVaR deben estar entre 0 y 1, sin incluir los extremos. Estas validaciones detectan entradas fuera de los límites definidos.
+
+En conjunto, la herramienta facilita el análisis histórico de activos y carteras y la exploración de escenarios de riesgo.
 
 ---
 
@@ -406,7 +416,7 @@ Ejecuta los scripts de prueba completos:
 
 This project implements a professional Python toolbox for fetching, standardizing, and analyzing financial and macroeconomic data, as well as quantitative investment portfolio modeling, **Monte Carlo** stochastic simulation, automated Markdown reporting, and visual diagnostics dashboards.
 
-The architecture emphasizes clean object-oriented design and **DataClasses**, cleanly decoupling the data ingestion layer from analytical models, data pre-processing, validation, and stochastic diffusion engines.
+The design follows a modular, decoupled architecture using object-oriented patterns and **DataClasses**, separating data ingestion from analytical models, preprocessing, and stochastic simulation and diagnostic engines.
 
 ### Repository Structure
 
@@ -629,7 +639,7 @@ See the extended architecture document in [`doc/architecture.md`](doc/architectu
 
 #### 1. `PriceSeries` — Single Asset Data Model (`models/series.py`)
 
-A standardized `dataclass` modeling price series from any source:
+A standardized `dataclass` for series from different sources, including equity and index prices. Each series uses a common structure of dates, closing prices, and returns, from which daily mean return and standard deviation are computed automatically.
 
 | Attribute / Method | Type | Description |
 |---|---|---|
@@ -646,6 +656,8 @@ A standardized `dataclass` modeling price series from any source:
 | `value_at_risk(0.95)` | `float` | Daily historical 95% Value at Risk |
 | `simulate_montecarlo()` | `MonteCarloResult` | Stochastic trajectory simulation (GBM) |
 | `plot_montecarlo()` | `Figure` | Trajectory and terminal distribution visualization |
+
+When a `PriceSeries` is created, its time index is validated, at least five observations and positive closing prices are required, and any supplied returns must be numeric and consistent with prices. Annualized metrics assume 252 trading days by default.
 
 #### 2. `Portfolio` — Investment Portfolio Model (`models/portfolio.py`)
 
@@ -676,6 +688,8 @@ A `dataclass` aggregating multiple `PriceSeries` assets, managing weights, valid
 | `report()` | `str` (Markdown) | Generates structured Markdown report with executive summary & risk flags |
 | `plots_report()` | `Figure` (Dashboard) | Generates 2x2 visual dashboard: relative growth, drawdown, correlation & return distribution |
 
+If weights are omitted, the portfolio uses equal weighting; users may also supply asset-specific allocations. The model requires valid assets, unique tickers, and shared dates for analysis. Explicit weights must be finite and non-negative and are normalized to sum to 1 before they are applied to the aligned daily returns.
+
 #### 3. Monte Carlo Simulation Engine (`models/monte_carlo.py`)
 
 - **`MonteCarloEngine`**: Stochastic simulation engine featuring:
@@ -683,16 +697,22 @@ A `dataclass` aggregating multiple `PriceSeries` assets, managing weights, valid
   2. *Correlated Multivariate GBM* utilizing Cholesky decomposition of the empirical asset covariance matrix ($\boldsymbol{\Sigma} = \boldsymbol{L}\boldsymbol{L}^T$).
 - **`MonteCarloResult`**: Container class storing full path trajectories ($S_t$), percentiles ($5\%$, $50\%$, $95\%$), expected capital, probability of loss, monetary terminal VaR, and terminal CVaR.
 
+The initial capital, horizon, and number of simulations must be positive; volatility must be non-negative and parameters finite. The multivariate mode also checks array dimensions, weights, and that the covariance matrix is symmetric and positive semidefinite. Results are scenarios conditional on the GBM parameters and assumptions, not forecasts or guarantees of return.
+
 #### 4. Preprocessing, Cleaning & Input Validation (`utils/`)
 
 - **`utils/cleaning.py`**:
-  - `clean_missing_values(df, method='ffill')`: Forward-fills up to the configured limit, backfills only leading NaNs, and drops remaining interior gaps.
+  - `clean_missing_values(df, method='ffill')`: Supports dropping incomplete rows, forward-filling up to a limit, or time interpolation; any remaining missing values are dropped.
   - `align_calendar_series(series_map, join_method='inner')`: Synchronizes differing trading calendars across exchanges.
 - **`utils/validation.py` (Strict Input Policy)**:
   - *Justification*: Unconstrained inputs cause silent failures in quantitative finance (e.g., negative prices producing NaN returns, non-positive definite covariances). Strict validation enforces fail-fast integrity.
-  - `validate_price_dataframe(df)`: Enforces `DatetimeIndex`, monotonic order, uniqueness, required numeric `'close'`, and strictly positive prices.
-  - `PriceSeries` applies this validation at construction and requires at least five observations; `Portfolio` validates its assets again before aggregation.
+  - `validate_price_dataframe(df)`: Requires a non-empty `DataFrame` with at least five observations, an ordered, unique datetime index, required numeric columns, and positive closing prices.
+  - `PriceSeries` also checks that calculated returns are finite and any supplied returns are consistent with prices.
+  - `Portfolio` requires at least one valid asset, rejects duplicate tickers, and requires shared dates; it also validates weights before aggregation.
   - `validate_portfolio_weights(weights, tickers)`: Enforces dimension match, finite values, short constraints, and exact normalization.
+  - VaR/CVaR confidence levels must be strictly between 0 and 1. These checks identify inputs outside defined bounds but do not guarantee the quality of source data.
+  
+Overall, the toolkit supports historical asset and portfolio analysis and risk-scenario exploration.
 
 ---
 
