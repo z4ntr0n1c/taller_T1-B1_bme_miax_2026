@@ -122,8 +122,15 @@ class YahooFinanceExtractor(BaseDataExtractor):
         """Normalize column names to lowercase and calculate daily returns."""
         out = df.copy()
         if isinstance(out.columns, pd.MultiIndex):
-            out.columns = out.columns.get_level_values(0).astype(str).str.lower()
+            lvl0 = out.columns.get_level_values(0).astype(str).str.strip().str.lower()
+            lvl1 = out.columns.get_level_values(-1).astype(str).str.strip().str.lower()
+            if (lvl0 == "close").any() or (lvl0 == "adj close").any():
+                out.columns = lvl0
+            else:
+                out.columns = lvl1
         else:
-            out.columns = out.columns.astype(str).str.lower()
+            out.columns = out.columns.astype(str).str.strip().str.lower()
 
-        return BaseDataExtractor._normalize_close_dataframe(out, close_col="close")
+        out = out.loc[:, ~out.columns.duplicated()]
+        close_col = "close" if "close" in out.columns else "adj close"
+        return BaseDataExtractor._normalize_close_dataframe(out, close_col=close_col)
