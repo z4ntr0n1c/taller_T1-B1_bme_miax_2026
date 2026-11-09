@@ -5,6 +5,7 @@ Compatible with both ``pytest`` and standard ``python -m unittest``.
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,10 @@ from unittest.mock import Mock, patch
 import matplotlib
 import numpy as np
 import pandas as pd
+
+_SRC_DIR = str(Path(__file__).resolve().parents[1] / "src")
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
 from toolkit import (
     FREDExtractor,

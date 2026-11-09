@@ -115,7 +115,7 @@ aligned_returns = align_calendar_series(series_dict, join_method="inner")</code>
     <li><strong>Resumen Ejecutivo</strong>: Rentabilidad acumulada y anualizada, volatilidad, ratio de Sharpe, Max Drawdown, VaR 95% (histórico y paramétrico mediante <code>statistics.NormalDist</code>) y CVaR 95%.</li>
     <li><strong>Desglose de Posiciones</strong>: Ponderaciones relativas y métricas individuales por activo.</li>
     <li><strong>Matriz de Correlación Cruzada</strong>: Tabla formateada en Markdown.</li>
-    <li><strong>Alertas Cuantitativas de Riesgo</strong>: Detección automática de concentración excesiva (<math><msub><mi>w</mi><mi>i</mi></msub><mo>&gt;</mo><mn>40</mn><mo>%</mo></math>), colinealidad elevada entre activos (<math><mi>r</mi><mo>&gt;</mo><mn>0.75</mn></math>) y caídas severas (<math><mo>&gt;</mo><mn>20</mn><mo>%</mo></math>).</li>
+    <li><strong>Alertas Cuantitativas de Riesgo (100 % vectorizadas)</strong>: Detección automática de concentración excesiva (<math><msub><mi>w</mi><mi>i</mi></msub><mo>&gt;</mo><mn>40</mn><mo>%</mo></math>), colinealidad elevada entre pares sobre el triángulo superior de la matriz de correlaciones mediante <code>np.where(np.triu(corr_vals, k=1) &gt; 0.75)</code> (<math><mi>r</mi><mo>&gt;</mo><mn>0.75</mn></math>) y caídas severas (<math><mo>&gt;</mo><mn>20</mn><mo>%</mo></math>).</li>
   </ol>
 
   <h2>4. Cuadro de Mando Analítico Multipanel (<code>.plots_report()</code>)</h2>

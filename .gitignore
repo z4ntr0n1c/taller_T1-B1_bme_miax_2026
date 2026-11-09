@@ -15,7 +15,6 @@ env/
 .DS_Store
 
 # Data / outputs
-data/
 reports/
 *.png
 
@@ -23,3 +22,7 @@ reports/
 # el resto (settings.local.json, caché, etc.) es local de cada usuario
 .claude/*
 !.claude/skills/
+
+# Project-specific AI rules
+CLAUDE.md
+GEMINI.md

@@ -63,22 +63,27 @@ def build_portfolio_report(
     param_var = portfolio.value_at_risk(confidence_level, method="parametric")
     cvar = portfolio.conditional_value_at_risk(confidence_level)
 
-    asset_rows = [
-        f"| `{asset.ticker}` | {asset.asset_type.capitalize()} | "
-        f"{portfolio.weights_dict[asset.ticker]:.1%} | {asset.mean_return:+.4f} | "
-        f"{asset.annualized_return():+.2%} | {asset.annualized_volatility():.2%} | "
-        f"{asset.sharpe_ratio(risk_free_rate):.2f} | {asset.max_drawdown():.2%} |"
-        for asset in portfolio.assets
-    ]
+    def _format_asset_row(asset: Any) -> str:
+        return (
+            f"| `{asset.ticker}` | {asset.asset_type.capitalize()} | "
+            f"{portfolio.weights_dict[asset.ticker]:.1%} | {asset.mean_return:+.4f} | "
+            f"{asset.annualized_return():+.2%} | {asset.annualized_volatility():.2%} | "
+            f"{asset.sharpe_ratio(risk_free_rate):.2f} | {asset.max_drawdown():.2%} |"
+        )
+
+    asset_rows = list(map(_format_asset_row, portfolio.assets))
     asset_table = "\n".join(asset_rows)
 
     corr_df = portfolio.correlation_matrix.round(3)
-    corr_headers = "| | " + " | ".join(f"`{col}`" for col in corr_df.columns) + " |"
+    corr_headers = "| | " + " | ".join(map(lambda col: f"`{col}`", corr_df.columns)) + " |"
     corr_sep = "|---|" + "---|" * len(corr_df.columns)
-    corr_rows = [
-        f"| `{idx}` | " + " | ".join(f"{val:.3f}" for val in row) + " |"
-        for idx, row in corr_df.iterrows()
-    ]
+    corr_formatted = corr_df.map(lambda val: f"{val:.3f}")
+    corr_rows = list(
+        map(
+            lambda item: f"| `{item[0]}` | " + " | ".join(item[1]) + " |",
+            zip(corr_formatted.index, corr_formatted.to_numpy().tolist(), strict=False),
+        )
+    )
     corr_table = "\n".join([corr_headers, corr_sep, *corr_rows])
 
     diagnostics = _build_risk_diagnostics(portfolio, conf_pct, max_dd, hist_var)
@@ -156,13 +161,17 @@ def _build_risk_diagnostics(
             "- ✅ **Concentration**: Well-balanced asset allocations (< 40% max per position)."
         )
 
-    high_corrs: list[str] = []
-    tickers = portfolio.tickers
-    for i in range(len(tickers)):
-        for j in range(i + 1, len(tickers)):
-            r = float(portfolio.correlation_matrix.iloc[i, j])
-            if r > 0.75:
-                high_corrs.append(f"`{tickers[i]}` & `{tickers[j]}` (r = {r:.2f})")
+    corr_vals = portfolio.correlation_matrix.to_numpy(dtype=float)
+    idx_i, idx_j = np.where(np.triu(corr_vals, k=1) > 0.75)
+    tickers_arr = np.asarray(portfolio.tickers, dtype=str)
+    high_corrs = list(
+        map(
+            lambda t_i, t_j, r: f"`{t_i}` & `{t_j}` (r = {r:.2f})",
+            tickers_arr[idx_i],
+            tickers_arr[idx_j],
+            corr_vals[idx_i, idx_j],
+        )
+    )
     if high_corrs:
         warnings.append(
             "- ⚠️ **Collinearity / Low Diversification Warning**: Strong positive correlation detected between: "
@@ -224,24 +233,28 @@ def plot_portfolio_dashboard(
     ax_corr, ax_dist = axs[1, 0], axs[1, 1]
     dates = portfolio.portfolio_returns.index
 
-    # Panel 1: Comparative Cumulative Performance
+    # Panel 1: Comparative Cumulative Performance (vectorized across all assets)
     port_cum = (1.0 + portfolio.portfolio_returns).cumprod()
     ax_perf.plot(
         dates, port_cum, color="#1e40af", linewidth=2.5, label=f"Portfolio ({portfolio.name})"
     )
 
     colors = ["#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"]
-    for i, asset in enumerate(portfolio.assets):
-        asset_cum = (1.0 + portfolio.returns_df[asset.ticker]).cumprod()
-        ax_perf.plot(
-            dates,
-            asset_cum,
-            color=colors[i % len(colors)],
-            linewidth=1.2,
-            linestyle="--",
-            alpha=0.8,
-            label=f"{asset.ticker} ({portfolio.weights_dict[asset.ticker]:.0%})",
+    assets_cum_df = (1.0 + portfolio.returns_df).cumprod()
+    list(
+        map(
+            lambda item: ax_perf.plot(
+                dates,
+                assets_cum_df[item[1].ticker],
+                color=colors[item[0] % len(colors)],
+                linewidth=1.2,
+                linestyle="--",
+                alpha=0.8,
+                label=f"{item[1].ticker} ({portfolio.weights_dict[item[1].ticker]:.0%})",
+            ),
+            enumerate(portfolio.assets),
         )
+    )
 
     ax_perf.axhline(1.0, color="#64748b", linestyle=":", linewidth=1.0)
     ax_perf.set_title(
@@ -273,7 +286,7 @@ def plot_portfolio_dashboard(
     ax_dd.legend(loc="lower left", fontsize=8.5, framealpha=0.9)
 
     # Panel 3: Correlation Matrix Heatmap
-    corr = portfolio.correlation_matrix.values
+    corr = portfolio.correlation_matrix.to_numpy(dtype=float)
     tickers = portfolio.tickers
     im = ax_corr.imshow(corr, cmap="coolwarm", vmin=-1.0, vmax=1.0)
     plt.colorbar(im, ax=ax_corr, fraction=0.046, pad=0.04)
@@ -283,20 +296,27 @@ def plot_portfolio_dashboard(
     ax_corr.set_xticklabels(tickers, rotation=45, ha="right", fontsize=9)
     ax_corr.set_yticklabels(tickers, fontsize=9)
 
-    for i in range(len(tickers)):
-        for j in range(len(tickers)):
-            val = float(corr[i, j])
-            color = "white" if abs(val) > 0.55 else "black"
-            ax_corr.text(
-                j,
-                i,
-                f"{val:.2f}",
+    grid_i, grid_j = np.indices(corr.shape)
+    flat_vals = corr.ravel()
+    text_colors = np.where(np.abs(flat_vals) > 0.55, "white", "black")
+    list(
+        map(
+            lambda i, j, val, col: ax_corr.text(
+                int(j),
+                int(i),
+                f"{float(val):.2f}",
                 ha="center",
                 va="center",
-                color=color,
+                color=str(col),
                 fontsize=9,
                 fontweight="bold",
-            )
+            ),
+            grid_i.ravel(),
+            grid_j.ravel(),
+            flat_vals,
+            text_colors,
+        )
+    )
 
     ax_corr.set_title("3. Asset Correlation Heatmap", fontsize=11, fontweight="bold")
 
@@ -387,9 +407,8 @@ def plot_monte_carlo(
         linewidth=0.8,
     )
 
-    median_path = np.median(result.trajectories, axis=1)
-    p_lower = np.percentile(result.trajectories, (1.0 - confidence_level) * 100.0, axis=1)
-    p_upper = np.percentile(result.trajectories, confidence_level * 100.0, axis=1)
+    q_levels = np.array([(1.0 - confidence_level) * 100.0, 50.0, confidence_level * 100.0])
+    p_lower, median_path, p_upper = np.percentile(result.trajectories, q_levels, axis=1)
 
     ax1.plot(result.time_steps, median_path, color="#ea580c", linewidth=2.2, label="Median Path")
     ax1.plot(

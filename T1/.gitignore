@@ -14,11 +14,6 @@ env/
 .idea/
 .DS_Store
 
-# Data / outputs
-data/
-!src/toolkit/data/
-reports/
-*.png
 
 # Claude config: se comparten solo las skills (.claude/skills/)
 .claude/*

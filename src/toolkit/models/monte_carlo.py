@@ -93,7 +93,9 @@ class MonteCarloResult:
         Args:
             q: Sequence of percentiles in ``[0, 1]`` range.
         """
-        return {p: float(np.percentile(self.terminal_values, p * 100.0)) for p in q}
+        q_arr = np.asarray(q, dtype=float)
+        pct_vals = np.percentile(self.terminal_values, q_arr * 100.0)
+        return dict(zip(q, np.asarray(pct_vals, dtype=float).tolist(), strict=False))
 
     def terminal_var(self, confidence_level: float = 0.95) -> float:
         """Compute Value at Risk (VaR) in monetary units at the terminal horizon."""
